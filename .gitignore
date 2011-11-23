@@ -1,7 +1,7 @@
 *.o
 *.ko
-.ftp*
 .tmp*
+*.cmd
 Module.symvers
 modules.order
-ftpfs_module.mod.c
+*.mod.c
