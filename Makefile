@@ -1,4 +1,4 @@
-obj-m := ftpfs_module.o
+obj-m := ftpfs.o
 
 PWD:= $(shell pwd)
 KERNEL_SOURCES:= /usr/src/linux
