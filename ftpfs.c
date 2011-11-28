@@ -60,7 +60,7 @@ static int ftpfs_fill_super(struct super_block *sb, void *data, int silent)
 // Params passed when registering filesystem
 static struct dentry* ftpfs_get_super(struct file_system_type *fst, int flags, const char *devname, void *data) 
 {
-	return mount_single(fst, flags, data, ftpfs_fill_super);
+	return mount_nodev(fst, flags, data, ftpfs_fill_super);
 }
 
 static struct file_system_type ftpfs_type = {
