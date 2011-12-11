@@ -38,15 +38,13 @@ struct ftp_sb_info
 };
 
 
-/* struct sockaddr_in saddr, daddr; */
-/* struct socket *new_sock = NULL */
 
-static struct ftp_sb_info* extract_info(struct file* filp) 
+static struct ftp_sb_info* extract_info(struct file* filp)
 {
-	return (struct ftp_sb_info*)filp->f_dentry->d_sb->s_fs_info; 
+	return (struct ftp_sb_info*)filp->f_dentry->d_sb->s_fs_info;
 }
 
-/*forward declarations */ 
+/*forward declarations */
 static ssize_t ftpfs_read_file(struct file *filp,char *buf, size_t count, loff_t *offset);
 static ssize_t ftpfs_write_file(struct file *filp, const char *buf, size_t count, loff_t *offset);
 
@@ -101,6 +99,8 @@ static int parse_address(const char* address,struct ftp_sb_params *params)
 }
 int send_sync_buf (struct socket *sock, const char *buf,
                    const size_t length, unsigned long flags)
+/* struct sockaddr_in saddr, daddr; */
+/* struct socket *new_sock = NULL */
 {
     struct msghdr msg;
     struct iovec iov;
@@ -296,8 +296,6 @@ struct tree_descr *  ftpfs_ls(struct ftp_sb_info *info)
 
     files = kmalloc(sizeof(struct tree_descr)*(i+1),GFP_KERNEL);
 
-	printk("files init,%x",files);
-
 	i=0;
 	tmp=recv_buffer;
 	while((tmp = strchr(tmp+1,'\n'))){
@@ -309,11 +307,12 @@ struct tree_descr *  ftpfs_ls(struct ftp_sb_info *info)
 		files[i].ops = &ftpfs_file_ops;
         files[i].mode =  S_IWUSR|S_IRUGO;
 		i++;
-
 	}
 	files[i].name="";
 	files[i].ops = NULL;
 	files[i].mode = 0;
+
+	read_response(info->control,recv_buffer);
 
     kfree(send_buffer);
     kfree(recv_buffer);
@@ -379,44 +378,50 @@ static struct file_system_type ftpfs_type = {
 
 static ssize_t ftpfs_read_file(struct file *filp, char *buf, size_t count, loff_t *offset)
 {
-    int r; 
+    int r;
+    const char* filename=filp->f_dentry->d_name.name;
+    char *send_buffer,*recv_buffer,*command;
+    struct ftp_sb_info* ftp_info;
 
-	const char* filename=filp->f_dentry->d_name.name;
-	char *send_buffer,*recv_buffer,*command; 
+    if(*offset==0){
 
-	struct ftp_sb_info* ftp_info = extract_info(filp); 
+        ftp_info = extract_info(filp);
 
-	send_buffer = kmalloc(SND_BUFFER_SIZE,GFP_KERNEL); 
-	recv_buffer = kmalloc(RCV_BUFFER_SIZE,GFP_KERNEL); 
-	command = kmalloc(RCV_BUFFER_SIZE, GFP_KERNEL); 
-	
-	
-	sprintf(command,"RETR %s\r\n",filename);
-	//sprintf(command,"PWD\r\n");
-	r=read_response(ftp_info->control, recv_buffer); 
+        send_buffer = kmalloc(SND_BUFFER_SIZE,GFP_KERNEL);
+        recv_buffer = kmalloc(RCV_BUFFER_SIZE,GFP_KERNEL);
+        command = kmalloc(RCV_BUFFER_SIZE, GFP_KERNEL);
 
-	//send 
-	//reinit conneciton
-	ftpfs_init_data_connection(ftp_info); 
-	send_reply(ftp_info->control, command); 
-	r=read_response(ftp_info->control, recv_buffer); 
+        sprintf(command,"TYPE I\r\n");
+        send_reply(ftp_info->control, command);
 
-	read_response(ftp_info->data, recv_buffer);
+        r=read_response(ftp_info->control, recv_buffer); /* "200 Switching
+                                                          * to binary mode" */
 
-	printk(recv_buffer);
-	
-	kfree(send_buffer); 
-	kfree(recv_buffer); 
-    return 0;
+        ftpfs_init_data_connection(ftp_info);           /* PASV stuff*/
+
+        sprintf(command,"RETR %s\r\n",filename);
+        send_reply(ftp_info->control, command);
+        r=read_response(ftp_info->control, recv_buffer); /* "Opening BINARY blalal"*/
+
+        r=read_response(ftp_info->data, recv_buffer); /* Actual data */
+
+        *offset +=r;
+		memcpy(buf,recv_buffer,r);
+
+        read_response(ftp_info->control, recv_buffer); /* Transer
+                                                        * complete        */
+        kfree(send_buffer);
+        kfree(recv_buffer);
+        return r;
+	}
+	else
+		return 0;
 }
 
 static ssize_t ftpfs_write_file(struct file *filp, const char *buf, size_t count, loff_t *offset)
 {
     printk("write file op\n");
-	struct ftp_sb_info* ftp_info = extract_info(filp); 
-
-
-
+    //struct ftp_sb_info* ftp_info = extract_info(filp);
     return 0;
 }
 
