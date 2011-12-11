@@ -53,7 +53,18 @@ static struct file_operations ftpfs_file_ops = {
     .write = ftpfs_write_file,
 };
 
-// Fill superblock
+/*forward declarations inode */ 
+static int ftpfs_create_file(struct inode *inode,struct dentry * dentry,int, struct nameidata *nameidata);
+static int ftpfs_mkdir(struct inode *inode,struct dentry* dentry,int unk);
+static int ftpfs_rmdir(struct inode *inode, struct dentry* dentry); 
+static int ftpfs_rename(struct inode* inode_src, struct dentry* dentry_src,struct inode* inode_dst,struct dentry* dentry_dst );
+
+static struct inode_operations ftpfs_inode_ops={
+	.create = ftpfs_create_file,
+	.mkdir = ftpfs_mkdir,
+	.rmdir = ftpfs_rmdir, 
+	.rename = ftpfs_rename, 
+};
 
 
 static int parse_address(const char* address,struct ftp_sb_params *params)
@@ -380,14 +391,13 @@ static ssize_t ftpfs_read_file(struct file *filp, char *buf, size_t count, loff_
 {
     int r;
     const char* filename=filp->f_dentry->d_name.name;
-    char *send_buffer,*recv_buffer,*command;
+    char *recv_buffer,*command;
     struct ftp_sb_info* ftp_info;
 
     if(*offset==0){
 
         ftp_info = extract_info(filp);
 
-        send_buffer = kmalloc(SND_BUFFER_SIZE,GFP_KERNEL);
         recv_buffer = kmalloc(RCV_BUFFER_SIZE,GFP_KERNEL);
         command = kmalloc(RCV_BUFFER_SIZE, GFP_KERNEL);
 
@@ -410,7 +420,7 @@ static ssize_t ftpfs_read_file(struct file *filp, char *buf, size_t count, loff_
 
         read_response(ftp_info->control, recv_buffer); /* Transer
                                                         * complete        */
-        kfree(send_buffer);
+		kfree(command); 
         kfree(recv_buffer);
         return r;
 	}
@@ -420,10 +430,62 @@ static ssize_t ftpfs_read_file(struct file *filp, char *buf, size_t count, loff_
 
 static ssize_t ftpfs_write_file(struct file *filp, const char *buf, size_t count, loff_t *offset)
 {
-    printk("write file op\n");
-    //struct ftp_sb_info* ftp_info = extract_info(filp);
-    return 0;
+	int r; 
+	const char* filename=filp->f_dentry->d_name.name; 
+	char *recv_buffer,*command,*send_buffer;
+    struct ftp_sb_info* ftp_info = extract_info(filp);
+	if( *offset==0 && count < SND_BUFFER_SIZE ){
+		recv_buffer = kmalloc(RCV_BUFFER_SIZE, GFP_KERNEL); 
+		send_buffer = kmalloc(SND_BUFFER_SIZE, GFP_KERNEL); 
+		command = kmalloc(RCV_BUFFER_SIZE, GFP_KERNEL); 
+
+		memset(send_buffer,0,SND_BUFFER_SIZE);
+
+		sprintf(command,"TYPE I\r\n");
+		send_reply(ftp_info->control,command); 
+
+		r=read_response(ftp_info->control, recv_buffer); /* switching to binary mode */ 
+		
+		ftpfs_init_data_connection(ftp_info); /*PASV stuff*/
+
+		sprintf(command,"STOR %s\r\n",filename); 
+		send_reply(ftp_info->control,command);
+		r=read_response(ftp_info->control,recv_buffer); /* opening binary*/ 
+
+		memcpy(send_buffer,buf,count); 
+		send_reply(ftp_info->data,send_buffer);
+		sock_release(ftp_info->data);
+		r=read_response(ftp_info->control,recv_buffer);
+
+
+		kfree(command);
+		kfree(send_buffer);
+		kfree(recv_buffer);
+		return count; 
+	}else 
+	    return 0;
 }
+
+static int ftpfs_create_file(struct inode *inode,struct dentry * dentry,int unk, struct nameidata *nameidata)
+{
+	return 0;
+}
+
+static int ftpfs_mkdir(struct inode *inode,struct dentry* dentry,int unk)
+{
+	return 0;
+}
+
+static int ftpfs_rmdir(struct inode *inode, struct dentry* dentry)
+{
+	return 0; 
+}
+
+static int ftpfs_rename(struct inode* inode_src, struct dentry* dentry_src,struct inode* inode_dst,struct dentry* dentry_dst )
+{
+	return 0;
+}
+
 
 static int init_ftp_fs(void)
 {
