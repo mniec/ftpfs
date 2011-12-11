@@ -39,28 +39,18 @@ struct ftp_sb_info
 
 
 /* struct sockaddr_in saddr, daddr; */
-/* struct socket *new_sock = NULL */;
+/* struct socket *new_sock = NULL */
 
-static int  ftpfs_open(struct inode *inode, struct file *filp)
+static struct ftp_sb_info* extract_info(struct file* filp) 
 {
-    printk("open file op\n");
-    return 0;
+	return (struct ftp_sb_info*)filp->f_dentry->d_sb->s_fs_info; 
 }
 
-static ssize_t ftpfs_read_file(struct file *filp, char *buf, size_t count, loff_t *offset)
-{
-    printk("read file op\n");
-    return 0;
-}
-
-static ssize_t ftpfs_write_file(struct file *filp, const char *buf, size_t count, loff_t *offset)
-{
-    printk("write file op\n");
-    return 0;
-}
+/*forward declarations */ 
+static ssize_t ftpfs_read_file(struct file *filp,char *buf, size_t count, loff_t *offset);
+static ssize_t ftpfs_write_file(struct file *filp, const char *buf, size_t count, loff_t *offset);
 
 static struct file_operations ftpfs_file_ops = {
-    .open = ftpfs_open,
     .read = ftpfs_read_file,
     .write = ftpfs_write_file,
 };
@@ -295,6 +285,7 @@ struct tree_descr *  ftpfs_ls(struct ftp_sb_info *info)
 	read_response(info->data, recv_buffer);
 
 	printk("FTPFS::ls %s\n\n",recv_buffer);
+
 	tmp = recv_buffer;
 
 	i=1;
@@ -384,6 +375,50 @@ static struct file_system_type ftpfs_type = {
     .mount= ftpfs_mount,
     .kill_sb= kill_litter_super,
 };
+
+
+static ssize_t ftpfs_read_file(struct file *filp, char *buf, size_t count, loff_t *offset)
+{
+    int r; 
+
+	const char* filename=filp->f_dentry->d_name.name;
+	char *send_buffer,*recv_buffer,*command; 
+
+	struct ftp_sb_info* ftp_info = extract_info(filp); 
+
+	send_buffer = kmalloc(SND_BUFFER_SIZE,GFP_KERNEL); 
+	recv_buffer = kmalloc(RCV_BUFFER_SIZE,GFP_KERNEL); 
+	command = kmalloc(RCV_BUFFER_SIZE, GFP_KERNEL); 
+	
+	
+	sprintf(command,"RETR %s\r\n",filename);
+	//sprintf(command,"PWD\r\n");
+	r=read_response(ftp_info->control, recv_buffer); 
+
+	//send 
+	//reinit conneciton
+	ftpfs_init_data_connection(ftp_info); 
+	send_reply(ftp_info->control, command); 
+	r=read_response(ftp_info->control, recv_buffer); 
+
+	read_response(ftp_info->data, recv_buffer);
+
+	printk(recv_buffer);
+	
+	kfree(send_buffer); 
+	kfree(recv_buffer); 
+    return 0;
+}
+
+static ssize_t ftpfs_write_file(struct file *filp, const char *buf, size_t count, loff_t *offset)
+{
+    printk("write file op\n");
+	struct ftp_sb_info* ftp_info = extract_info(filp); 
+
+
+
+    return 0;
+}
 
 static int init_ftp_fs(void)
 {
