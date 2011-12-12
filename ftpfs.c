@@ -315,6 +315,7 @@ static int ftpfs_simple_fill_super(struct super_block *s,unsigned long magic,str
 	//root_inode->i_op = &simple_dir_inode_operations;
 	root_inode->i_fop = &simple_dir_operations;
 	root_inode->i_ino = 1;
+	root_inode->i_mode = S_IFDIR | 0755;
 	root_inode->i_atime = root_inode->i_mtime = root_inode->i_ctime = CURRENT_TIME;
 	root_inode->i_nlink = 2;
 
