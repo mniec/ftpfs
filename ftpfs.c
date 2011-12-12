@@ -222,10 +222,13 @@ struct tree_descr *  ftpfs_ls(struct ftp_sb_info *info)
 	int r;
 	int i;
 
+	char *creds; 
+
 
     send_buffer = kmalloc(SND_BUFFER_SIZE,GFP_KERNEL);
     recv_buffer = kmalloc(RCV_BUFFER_SIZE,GFP_KERNEL);
     tmp = kmalloc(RCV_BUFFER_SIZE,GFP_KERNEL);
+	creds=kmalloc(12,GFP_KERNEL);
 
     sprintf(tmp, "LIST\r\n");
     send_reply(info->control, tmp);
@@ -242,25 +245,27 @@ struct tree_descr *  ftpfs_ls(struct ftp_sb_info *info)
 	}
 
 
-    files = kmalloc(sizeof(struct tree_descr)*(i+1),GFP_KERNEL);
+    files = kmalloc(sizeof(struct tree_descr)*(i+2),GFP_KERNEL);
 
 	i=0;
 	tmp=recv_buffer;
 	while((tmp = strchr(tmp+1,'\n'))){
 		memset(file_name,0,256);
-		sscanf(tmp+1,"%*s %*d %*d %*d %d %*s %*d %*d:%*d%s\n",&size,file_name);
+		sscanf(tmp+1,"%s %*d %*d %*d %d %*s %*d %*d:%*d%s\n",creds,&size,file_name);
 		printk("%s => %d\n",file_name,size);
 		files[i].name = kmalloc(strlen(file_name)+1,GFP_KERNEL);
         strcpy(files[i].name,file_name);
 		files[i].ops = &ftpfs_file_ops;
         files[i].mode =  S_IWUSR|S_IRUGO;
+		if(creds[0] == 'd' ) files[i].mode |= S_IFDIR; 
+		else if(creds[0] =='-') files[i].mode |= S_IFREG; 
 		i++;
-		/*if( unlikely(i==1)) {
+		if( unlikely(i==1)) {
 		  files[i].name=0;
 		  files[i].ops=NULL;
 		  files[i].mode=0;
 		  i++; 
-		}*/
+		}
 	}
 	files[i].name="";
 	files[i].ops = NULL;
@@ -268,6 +273,7 @@ struct tree_descr *  ftpfs_ls(struct ftp_sb_info *info)
 
 	read_response(info->control,recv_buffer);
 
+	kfree(creds);
     kfree(send_buffer);
     kfree(recv_buffer);
     return files;
@@ -334,7 +340,7 @@ static int ftpfs_simple_fill_super(struct super_block *s,unsigned long magic,str
 		if(!dentry) goto out;
 		inode =new_inode(s);
 		if(!inode) goto out;
-		inode->i_mode = S_IFREG | files->mode;
+		inode->i_mode = files->mode;
 		inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 		inode->i_fop = files->ops;
 	    inode->i_ino = i;
